@@ -1,53 +1,78 @@
-function levelFromXP(xp) {
-  let level = 1
-  while (xpForLevel(level + 1) <= xp) level++
-  return level
+import { motion } from 'framer-motion'
+import { Card, CardContent } from './ui/card'
+import { PenLine, Zap, Target, Clock } from 'lucide-react'
+
+const container = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.08 }
+  }
 }
 
-function xpForLevel(n) {
-  return Math.round(100 * Math.pow(n, 1.6))
+const item = {
+  hidden: { opacity: 0, y: 12 },
+  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 200, damping: 20 } }
 }
 
-export function StatsPanel({ todayStats, streak, totalXP }) {
-  const level = levelFromXP(totalXP)
-  const currentLevelXP = xpForLevel(level)
-  const nextLevelXP = xpForLevel(level + 1)
-  const progress = nextLevelXP > currentLevelXP
-    ? Math.min(((totalXP - currentLevelXP) / (nextLevelXP - currentLevelXP)) * 100, 100)
-    : 0
+export function StatsPanel({ todayStats, streak }) {
+  const stats = [
+    {
+      icon: PenLine,
+      label: 'Words Today',
+      value: todayStats.total_words.toLocaleString(),
+      color: 'text-blue-400',
+      bgColor: 'bg-blue-500/10',
+    },
+    {
+      icon: Target,
+      label: 'Prompts',
+      value: todayStats.total_prompts,
+      color: 'text-emerald-400',
+      bgColor: 'bg-emerald-500/10',
+    },
+    {
+      icon: Zap,
+      label: 'XP Earned',
+      value: `+${todayStats.total_xp}`,
+      color: 'text-amber-400',
+      bgColor: 'bg-amber-500/10',
+    },
+    {
+      icon: Clock,
+      label: 'Avg Words/Prompt',
+      value: todayStats.total_prompts > 0
+        ? Math.round(todayStats.total_words / todayStats.total_prompts)
+        : 0,
+      color: 'text-purple-400',
+      bgColor: 'bg-purple-500/10',
+    },
+  ]
 
   return (
-    <div className="flex flex-wrap gap-4 text-sm">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 flex items-center gap-2">
-        <span className="text-xl">🔥</span>
-        <div>
-          <div className="text-zinc-500 text-xs">Streak</div>
-          <div className="text-zinc-100 font-bold">{streak} {streak === 1 ? 'day' : 'days'}</div>
-        </div>
-      </div>
-
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
-        <div className="text-zinc-500 text-xs mb-1">Today</div>
-        <div className="text-zinc-100 font-bold">
-          {todayStats.total_words.toLocaleString()} words
-        </div>
-        <div className="text-zinc-500 text-xs">
-          {todayStats.total_prompts} prompts &middot; {todayStats.total_xp} XP
-        </div>
-      </div>
-
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 min-w-[180px]">
-        <div className="flex justify-between text-xs text-zinc-500 mb-1">
-          <span>Level {level}</span>
-          <span>{totalXP.toLocaleString()} / {nextLevelXP.toLocaleString()} XP</span>
-        </div>
-        <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-zinc-100 rounded-full transition-all duration-500"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      </div>
-    </div>
+    <motion.div
+      className="grid grid-cols-2 lg:grid-cols-4 gap-3"
+      variants={container}
+      initial="hidden"
+      animate="show"
+    >
+      {stats.map((stat) => (
+        <motion.div key={stat.label} variants={item}>
+          <Card className="hover:shadow-lg hover:-translate-y-0.5 transition-all duration-150 cursor-default">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className={`${stat.bgColor} rounded-lg p-1.5`}>
+                  <stat.icon className={`w-3.5 h-3.5 ${stat.color}`} />
+                </div>
+                <span className="text-xs text-zinc-500 font-medium">{stat.label}</span>
+              </div>
+              <div className="text-xl font-bold text-zinc-100 font-mono tracking-tight">
+                {stat.value}
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      ))}
+    </motion.div>
   )
 }
