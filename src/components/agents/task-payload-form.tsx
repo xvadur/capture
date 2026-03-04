@@ -60,7 +60,10 @@ export function TaskPayloadForm({ onCreated }: { onCreated: () => void }) {
 
   return (
     <Card className="space-y-3">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">New Agent Task</h3>
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Command Center · New Agent Task</h3>
+      <p className="text-sm text-slate-500">
+        Assign a concrete payload to one lane agent. This becomes the agent&apos;s current mission input.
+      </p>
 
       <form onSubmit={onSubmit} className="space-y-3">
         <input

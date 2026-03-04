@@ -30,6 +30,11 @@ export interface CaptureEntry {
   wordCount: number;
   charCount: number;
   charCountNoSpaces: number;
+  uniqueWordCount: number;
+  lexicalRichnessPct: number;
+  avgWordLength: number;
+  sentencesCount: number;
+  paragraphsCount: number;
   createdAt: string;
 }
 
@@ -39,13 +44,41 @@ export interface MetricPoint {
   chars: number;
 }
 
+export interface LinguisticSummary {
+  uniqueWords: number;
+  richnessPct: number;
+  avgWordLength: number;
+  sentences: number;
+  paragraphs: number;
+}
+
+export interface TrendDayPoint {
+  day: string;
+  words: number;
+  uniqueWords: number;
+  captures: number;
+}
+
+export interface CaptureLatestSnapshot extends LinguisticSummary {
+  words24h: number;
+  chars24h: number;
+  entries24h: number;
+  avgWpm24h: number;
+  totalCaptures: number;
+  avgWordsPerCapture: number;
+}
+
 export interface CaptureMetrics {
   words24h: number;
   chars24h: number;
   entries24h: number;
+  avgWpm24h: number;
   totalCaptures: number;
   avgWordsPerCapture: number;
   points: MetricPoint[];
+  linguistic24h: LinguisticSummary;
+  trend30d: TrendDayPoint[];
+  latestSnapshot: CaptureLatestSnapshot;
   recentEntries: CaptureEntry[];
 }
 

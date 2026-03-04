@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AGENTS_POLL_MS, METRICS_POLL_MS } from "@/lib/config";
-import { CaptureMetrics, LinearTasksResponse } from "@/lib/types";
+import { METRICS_POLL_MS } from "@/lib/config";
+import { CaptureMetrics } from "@/lib/types";
 import { useAppState } from "@/components/app-state-provider";
 
 type MetricChip = {
@@ -18,9 +18,8 @@ function chipToneClasses(tone: MetricChip["tone"]): string {
 }
 
 export function StickyMetricsBar() {
-  const { liveCharsPerMinute, draftWords, draftCharsNoSpaces } = useAppState();
+  const { liveWordsPerMinute, draftWords } = useAppState();
   const [captureMetrics, setCaptureMetrics] = useState<CaptureMetrics | null>(null);
-  const [taskSummary, setTaskSummary] = useState<LinearTasksResponse["summary"] | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -50,54 +49,26 @@ export function StickyMetricsBar() {
     };
   }, []);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchTasks = async () => {
-      try {
-        const response = await fetch("/api/linear/tasks", { cache: "no-store" });
-        if (!response.ok) return;
-        const data = (await response.json()) as LinearTasksResponse;
-        if (isMounted) setTaskSummary(data.summary);
-      } catch {
-        // keep previous snapshot
-      }
-    };
-
-    const bootstrap = setTimeout(() => {
-      void fetchTasks();
-    }, 0);
-    const interval = setInterval(() => {
-      void fetchTasks();
-    }, AGENTS_POLL_MS);
-
-    return () => {
-      isMounted = false;
-      clearTimeout(bootstrap);
-      clearInterval(interval);
-    };
-  }, []);
-
   const chips = useMemo<MetricChip[]>(() => {
-    const blocked = taskSummary?.byPhase.blocked ?? 0;
-    const escalation = taskSummary?.blockersOlderThan30m ?? 0;
+    const snapshot = captureMetrics?.latestSnapshot;
+    const linguistic = captureMetrics?.linguistic24h;
 
     return [
-      { label: "LIVE CPM", value: String(liveCharsPerMinute) },
+      { label: "LIVE WPM", value: String(liveWordsPerMinute) },
       { label: "DRAFT WORDS", value: String(draftWords) },
-      { label: "DRAFT CHARS", value: String(draftCharsNoSpaces) },
-      { label: "24H WORDS", value: String(captureMetrics?.words24h ?? 0), tone: "positive" },
-      { label: "24H ENTRIES", value: String(captureMetrics?.entries24h ?? 0) },
-      { label: "AVG/CAPTURE", value: String(captureMetrics?.avgWordsPerCapture ?? 0) },
-      { label: "TASKS", value: String(taskSummary?.total ?? 0) },
-      { label: "BLOCKED", value: String(blocked), tone: blocked > 0 ? "danger" : "positive" },
+      { label: "24H WORDS", value: String(snapshot?.words24h ?? captureMetrics?.words24h ?? 0), tone: "positive" },
+      { label: "24H PROMPTS", value: String(snapshot?.entries24h ?? captureMetrics?.entries24h ?? 0), tone: "positive" },
+      { label: "AVG WPM 24H", value: String(snapshot?.avgWpm24h ?? captureMetrics?.avgWpm24h ?? 0), tone: "positive" },
+      { label: "24H UNIQUE", value: String(snapshot?.uniqueWords ?? linguistic?.uniqueWords ?? 0), tone: "positive" },
+      { label: "RICHNESS %", value: String(snapshot?.richnessPct ?? linguistic?.richnessPct ?? 0) },
       {
-        label: "ESCALATE >30M",
-        value: String(escalation),
-        tone: escalation > 0 ? "danger" : "positive",
+        label: "AVG WORD LEN",
+        value: String(snapshot?.avgWordLength ?? linguistic?.avgWordLength ?? 0),
       },
+      { label: "SENTENCES", value: String(snapshot?.sentences ?? linguistic?.sentences ?? 0) },
+      { label: "PARAGRAPHS", value: String(snapshot?.paragraphs ?? linguistic?.paragraphs ?? 0) },
     ];
-  }, [captureMetrics, draftCharsNoSpaces, draftWords, liveCharsPerMinute, taskSummary]);
+  }, [captureMetrics, draftWords, liveWordsPerMinute]);
 
   return (
     <div className="sticky top-0 z-30 border-y border-[var(--line)] bg-[var(--panel)]/95 backdrop-blur">

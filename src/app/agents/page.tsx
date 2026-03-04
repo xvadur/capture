@@ -48,6 +48,13 @@ export default function AgentsPage() {
 
   return (
     <div className="space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold text-slate-900">Agents Command Center</h2>
+        <p className="text-sm text-slate-500">
+          Assign tasks, track each lane&apos;s current mission, and control phase transitions.
+        </p>
+      </div>
+
       <TaskPayloadForm onCreated={loadAgents} />
 
       <div className="grid gap-4 xl:grid-cols-[1.1fr_1.2fr]">
@@ -56,7 +63,7 @@ export default function AgentsPage() {
       </div>
 
       <Card>
-        <div className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">Live Summary</div>
+        <div className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">Lane Runtime Summary</div>
         <div className="grid gap-3 md:grid-cols-4">
           <div className="rounded-lg border border-[var(--line)] bg-white p-3 text-sm">Queued: {data.summary.byPhase.queued}</div>
           <div className="rounded-lg border border-[var(--line)] bg-white p-3 text-sm">In Progress: {data.summary.byPhase.in_progress}</div>

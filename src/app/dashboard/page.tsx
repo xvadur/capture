@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { AgentLeaderboard } from "@/components/dashboard/agent-leaderboard";
 import { BlockersBoard } from "@/components/dashboard/blockers-board";
+import { ExecutionBoard } from "@/components/dashboard/execution-board";
 import { PhasesBoard } from "@/components/dashboard/phases-board";
 import { StatusOverview } from "@/components/dashboard/status-overview";
 import { AGENTS_POLL_MS } from "@/lib/config";
@@ -43,12 +45,22 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold text-slate-900">Operations Cockpit</h2>
+        <p className="text-sm text-slate-500">
+          See what moved, what is pending, what got blocked, and who is shipping.
+        </p>
+      </div>
+
       <StatusOverview summary={data.summary} />
 
       <div className="grid gap-4 xl:grid-cols-[1.1fr_1fr]">
         <PhasesBoard summary={data.summary} />
         <BlockersBoard tasks={data.tasks} />
       </div>
+
+      <ExecutionBoard tasks={data.tasks} />
+      <AgentLeaderboard tasks={data.tasks} />
     </div>
   );
 }

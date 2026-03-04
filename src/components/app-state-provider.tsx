@@ -3,18 +3,18 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import { countCharsNoSpaces, countWords } from "@/lib/utils";
 
-type TypingSample = { timestamp: number; charsNoSpaces: number };
+type TypingSample = { timestamp: number; words: number };
 
 type AppStateValue = {
   draft: string;
   draftWords: number;
   draftCharsNoSpaces: number;
-  liveCharsPerMinute: number;
+  liveWordsPerMinute: number;
   updateDraft: (value: string) => void;
   resetDraft: () => void;
 };
 
-const WINDOW_MS = 10_000;
+const WINDOW_MS = 20_000;
 
 const AppStateContext = createContext<AppStateValue | undefined>(undefined);
 
@@ -24,11 +24,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const updateDraft = useCallback((value: string) => {
     const now = Date.now();
-    const charsNoSpaces = countCharsNoSpaces(value);
+    const words = countWords(value);
 
     setDraft(value);
     setSamples((current) => {
-      const next = [...current, { timestamp: now, charsNoSpaces }].filter(
+      const next = [...current, { timestamp: now, words }].filter(
         (sample) => now - sample.timestamp <= WINDOW_MS,
       );
       return next.slice(-40);
@@ -44,20 +44,22 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     const draftWords = countWords(draft);
     const draftCharsNoSpaces = countCharsNoSpaces(draft);
 
-    let liveCharsPerMinute = 0;
+    let liveWordsPerMinute = 0;
     if (samples.length >= 2) {
       const first = samples[0];
       const last = samples[samples.length - 1];
-      const deltaChars = Math.max(0, last.charsNoSpaces - first.charsNoSpaces);
+      const deltaWords = Math.max(0, last.words - first.words);
       const deltaSeconds = Math.max(1, (last.timestamp - first.timestamp) / 1000);
-      liveCharsPerMinute = Math.round((deltaChars / deltaSeconds) * 60);
+      if (deltaSeconds >= 3) {
+        liveWordsPerMinute = Math.round((deltaWords / deltaSeconds) * 60);
+      }
     }
 
     return {
       draft,
       draftWords,
       draftCharsNoSpaces,
-      liveCharsPerMinute,
+      liveWordsPerMinute,
       updateDraft,
       resetDraft,
     };

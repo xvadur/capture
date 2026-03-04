@@ -43,9 +43,11 @@ npm run dev
 ## Supabase SQL
 Run:
 - `supabase/sql/001_capture_v2_core.sql`
+- `supabase/sql/002_capture_v2_linguistic_metrics.sql`
 
 Table created:
 - `public.capture_entries`
+- `public.capture_daily_metrics`
 
 ## Verification commands
 ```bash

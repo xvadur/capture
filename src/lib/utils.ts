@@ -1,11 +1,23 @@
 import { BLOCKED_REASONS, TaskPhase, TASK_PHASES } from "@/lib/types";
 
-export function countWords(value: string): number {
-  const normalized = value.trim();
+function stripEdgePunctuation(token: string): string {
+  return token.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+}
+
+export function tokenizeNormalizedWords(value: string): string[] {
+  const normalized = value.trim().toLowerCase();
   if (!normalized) {
-    return 0;
+    return [];
   }
-  return normalized.split(/\s+/).filter(Boolean).length;
+
+  return normalized
+    .split(/\s+/)
+    .map((token) => stripEdgePunctuation(token))
+    .filter(Boolean);
+}
+
+export function countWords(value: string): number {
+  return tokenizeNormalizedWords(value).length;
 }
 
 export function countChars(value: string): number {
@@ -14,6 +26,65 @@ export function countChars(value: string): number {
 
 export function countCharsNoSpaces(value: string): number {
   return value.replace(/\s+/g, "").length;
+}
+
+export function countSentences(value: string): number {
+  const normalized = value.trim();
+  if (!normalized) {
+    return 0;
+  }
+
+  const matches = normalized.match(/[.?!]+/g);
+  return matches?.length ?? 0;
+}
+
+export function countParagraphs(value: string): number {
+  const normalized = value.trim();
+  if (!normalized) {
+    return 0;
+  }
+
+  return normalized.split(/\n\s*\n+/).filter((paragraph) => paragraph.trim().length > 0).length;
+}
+
+export function averageWordLength(value: string): number {
+  const tokens = tokenizeNormalizedWords(value);
+  if (tokens.length === 0) {
+    return 0;
+  }
+
+  const letters = tokens.reduce((sum, token) => sum + token.length, 0);
+  return average(letters, tokens.length);
+}
+
+export function lexicalRichnessPct(value: string): number {
+  const tokens = tokenizeNormalizedWords(value);
+  if (tokens.length === 0) {
+    return 0;
+  }
+
+  return average(new Set(tokens).size * 100, tokens.length);
+}
+
+export function uniqueWordsCount(value: string): number {
+  const tokens = tokenizeNormalizedWords(value);
+  if (tokens.length === 0) {
+    return 0;
+  }
+  return new Set(tokens).size;
+}
+
+export function analyzeCaptureText(value: string) {
+  return {
+    wordCount: countWords(value),
+    charCount: countChars(value),
+    charCountNoSpaces: countCharsNoSpaces(value),
+    uniqueWordCount: uniqueWordsCount(value),
+    lexicalRichnessPct: lexicalRichnessPct(value),
+    avgWordLength: averageWordLength(value),
+    sentencesCount: countSentences(value),
+    paragraphsCount: countParagraphs(value),
+  };
 }
 
 export function average(value: number, divisor: number): number {
