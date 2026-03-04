@@ -4,7 +4,9 @@ import { PromptEditor } from './components/PromptEditor'
 import { StatsPanel } from './components/StatsPanel'
 import { Sidebar } from './components/layout/Sidebar'
 import { AppLayout } from './components/layout/AppLayout'
+import { DeliveryOSView } from './components/os/DeliveryOSView'
 import { useStats } from './hooks/useStats'
+import { useDeliveryOS } from './hooks/useDeliveryOS'
 import { sounds } from './lib/sounds'
 
 function XPFlash({ result, onDone }) {
@@ -39,18 +41,47 @@ function XPFlash({ result, onDone }) {
   )
 }
 
-export default function App() {
-  const [isLoading, setIsLoading] = useState(false)
-  const [lastResult, setLastResult] = useState(null)
-  const { todayStats, streak, refetch } = useStats()
+function PromptHubView({ todayStats, streak, onSubmit, isLoading }) {
+  return (
+    <motion.div
+      className="max-w-3xl mx-auto flex flex-col gap-6"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: 'easeOut' }}
+    >
+      <div>
+        <motion.h2
+          className="text-xl font-semibold text-zinc-100"
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          Mission Control
+        </motion.h2>
+        <p className="text-zinc-500 text-sm mt-0.5">Your prompt writing dashboard</p>
+      </div>
 
-  async function handleSubmit({ text, cpm, cpmDuration }) {
-    setIsLoading(true)
+      <StatsPanel todayStats={todayStats} streak={streak} />
+      <PromptEditor onSubmit={onSubmit} isLoading={isLoading} />
+    </motion.div>
+  )
+}
+
+export default function App() {
+  const [isLoadingPrompt, setIsLoadingPrompt] = useState(false)
+  const [lastResult, setLastResult] = useState(null)
+  const [activePage, setActivePage] = useState('prompt-hub')
+
+  const { todayStats, streak, refetch } = useStats()
+  const deliveryOS = useDeliveryOS(activePage === 'delivery-os')
+
+  async function handlePromptSubmit({ text, cpm, cpmDuration }) {
+    setIsLoadingPrompt(true)
     try {
       const res = await fetch('/api/prompts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, cpm, cpmDuration })
+        body: JSON.stringify({ text, cpm, cpmDuration }),
       })
       const data = await res.json()
       if (res.ok) {
@@ -61,7 +92,7 @@ export default function App() {
         setTimeout(() => setLastResult(null), 4000)
       }
     } finally {
-      setIsLoading(false)
+      setIsLoadingPrompt(false)
     }
   }
 
@@ -69,36 +100,41 @@ export default function App() {
     <Sidebar
       totalXP={todayStats.total_xp || 0}
       streak={streak}
+      activePage={activePage}
+      onNavigate={setActivePage}
+      unresolvedFollowups={deliveryOS.dashboard?.metrics?.unresolvedFollowups || 0}
     />
   )
 
   return (
     <AppLayout sidebar={sidebar}>
-      <motion.div
-        className="max-w-3xl mx-auto flex flex-col gap-6"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, ease: 'easeOut' }}
-      >
-        {/* Header */}
-        <div>
-          <motion.h2
-            className="text-xl font-semibold text-zinc-100"
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.1 }}
-          >
-            Mission Control
-          </motion.h2>
-          <p className="text-zinc-500 text-sm mt-0.5">Your prompt writing dashboard</p>
-        </div>
+      {activePage === 'prompt-hub' && (
+        <PromptHubView
+          todayStats={todayStats}
+          streak={streak}
+          onSubmit={handlePromptSubmit}
+          isLoading={isLoadingPrompt}
+        />
+      )}
 
-        {/* Stats Grid */}
-        <StatsPanel todayStats={todayStats} streak={streak} />
-
-        {/* Editor */}
-        <PromptEditor onSubmit={handleSubmit} isLoading={isLoading} />
-      </motion.div>
+      {activePage === 'delivery-os' && (
+        <DeliveryOSView
+          dashboard={deliveryOS.dashboard}
+          leads={deliveryOS.leads}
+          followups={deliveryOS.followups}
+          dailyEvidence={deliveryOS.dailyEvidence}
+          isLoading={deliveryOS.isLoading}
+          isSaving={deliveryOS.isSaving}
+          error={deliveryOS.error}
+          onRefresh={deliveryOS.refetchAll}
+          onCreateLead={deliveryOS.createLead}
+          onStageChange={deliveryOS.updateLeadStage}
+          onCreateConversation={deliveryOS.createConversation}
+          onCreateFollowup={deliveryOS.createFollowup}
+          onUpdateFollowup={deliveryOS.updateFollowup}
+          onCreateEvidence={deliveryOS.createDailyEvidence}
+        />
+      )}
 
       <XPFlash result={lastResult} onDone={() => setLastResult(null)} />
     </AppLayout>
