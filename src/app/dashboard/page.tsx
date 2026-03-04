@@ -54,6 +54,25 @@ export default function DashboardPage() {
 
       <StatusOverview summary={data.summary} />
 
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="rounded-xl border border-[var(--line)] bg-white p-3">
+          <div className="text-xs uppercase tracking-wide text-slate-400">Mission Packets</div>
+          <div className="text-2xl font-semibold text-slate-900">{data.missionSummary?.totalPackets ?? 0}</div>
+        </div>
+        <div className="rounded-xl border border-[var(--line)] bg-white p-3">
+          <div className="text-xs uppercase tracking-wide text-slate-400">Approval Queue</div>
+          <div className="text-2xl font-semibold text-amber-700">{data.approvalQueue?.length ?? 0}</div>
+        </div>
+        <div className="rounded-xl border border-[var(--line)] bg-white p-3">
+          <div className="text-xs uppercase tracking-wide text-slate-400">SLA Breaches</div>
+          <div className="text-2xl font-semibold text-rose-700">{data.slaBreaches?.length ?? 0}</div>
+        </div>
+        <div className="rounded-xl border border-[var(--line)] bg-white p-3">
+          <div className="text-xs uppercase tracking-wide text-slate-400">Packets / Day</div>
+          <div className="text-2xl font-semibold text-slate-900">{data.throughput?.packetsPerDay ?? 0}</div>
+        </div>
+      </div>
+
       <div className="grid gap-4 xl:grid-cols-[1.1fr_1fr]">
         <PhasesBoard summary={data.summary} />
         <BlockersBoard tasks={data.tasks} />

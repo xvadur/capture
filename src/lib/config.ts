@@ -3,22 +3,91 @@ import { LaneDefinition, LaneId } from "@/lib/types";
 export const APP_NAME = "Capture v2";
 
 export const LANES: LaneDefinition[] = [
-  { id: "sales", name: "Sales Batch Prep", purpose: "Prospecting and booking pipeline", ownerHint: "sales-agent" },
-  { id: "delivery", name: "Delivery Readiness", purpose: "Onboarding and fulfillment readiness", ownerHint: "delivery-agent" },
-  { id: "runtime", name: "Runtime Health", purpose: "Core system uptime and incidents", ownerHint: "runtime-agent" },
-  { id: "content", name: "Content Ops", purpose: "Messaging, writing, and assets", ownerHint: "content-agent" },
-  { id: "ops", name: "Ops Backbone", purpose: "Process consistency and runbooks", ownerHint: "ops-agent" },
-  { id: "automation", name: "Automation", purpose: "Workflow and integrations", ownerHint: "automation-agent" },
-  { id: "qa", name: "QA Guard", purpose: "Checks and acceptance quality", ownerHint: "qa-agent" },
-  { id: "insights", name: "Insights", purpose: "Reporting, analytics, and feedback", ownerHint: "insights-agent" },
+  {
+    id: "command_center",
+    name: "Command Center",
+    purpose: "Mission routing, priority lock, and escalation control",
+    ownerHint: "agent_orchestrator",
+  },
+  {
+    id: "sales_outreach",
+    name: "Sales Outreach",
+    purpose: "Outbound pipeline, follow-ups, and reservation flow",
+    ownerHint: "agent_sales_outreach",
+  },
+  {
+    id: "client_delivery",
+    name: "Client Delivery",
+    purpose: "Execution milestones, QA loops, and go-live readiness",
+    ownerHint: "agent_client_delivery",
+  },
+  {
+    id: "ai_recepcia",
+    name: "AI Recepcia",
+    purpose: "Proof capture and measurable evidence artifacts",
+    ownerHint: "agent_ai_recepcia",
+  },
+  {
+    id: "content_media",
+    name: "Content Media",
+    purpose: "Evidence-linked content production and repurposing",
+    ownerHint: "agent_content_media",
+  },
+  {
+    id: "system_devops",
+    name: "System DevOps",
+    purpose: "Runtime diagnostics, mitigation, rollback readiness",
+    ownerHint: "agent_system_devops",
+  },
+  {
+    id: "finance_ops",
+    name: "Finance Ops",
+    purpose: "Runway tracking, spend control, and unit-risk checks",
+    ownerHint: "agent_finance_ops",
+  },
+  {
+    id: "research_intel",
+    name: "Research Intel",
+    purpose: "Signals, positioning briefs, and decision support",
+    ownerHint: "agent_research_intel",
+  },
+  {
+    id: "voice_builder",
+    name: "Voice Builder",
+    purpose: "Voice template design and acceptance packet specs",
+    ownerHint: "agent_voice_builder",
+  },
+  {
+    id: "voice_ops",
+    name: "Voice Ops",
+    purpose: "Voice runtime integration and validation evidence",
+    ownerHint: "agent_voice_ops",
+  },
+  {
+    id: "biz_admin",
+    name: "Biz Admin",
+    purpose: "Legal/admin/compliance execution and deadline control",
+    ownerHint: "agent_biz_admin",
+  },
 ];
 
-export const LANE_MAP: Record<LaneId, LaneDefinition> = LANES.reduce(
+export const LEGACY_LANE_ALIASES: Partial<Record<LaneId, LaneId>> = {
+  sales: "sales_outreach",
+  delivery: "client_delivery",
+  runtime: "system_devops",
+  content: "content_media",
+  ops: "command_center",
+  automation: "system_devops",
+  qa: "client_delivery",
+  insights: "research_intel",
+};
+
+export const LANE_MAP: Partial<Record<LaneId, LaneDefinition>> = LANES.reduce(
   (acc, lane) => {
     acc[lane.id] = lane;
     return acc;
   },
-  {} as Record<LaneId, LaneDefinition>,
+  {} as Partial<Record<LaneId, LaneDefinition>>,
 );
 
 export const LINEAR_ENV = {

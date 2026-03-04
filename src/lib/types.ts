@@ -7,7 +7,23 @@ export type BlockedReason = (typeof BLOCKED_REASONS)[number];
 export const APPROVAL_STATUSES = ["pending", "approved", "rejected"] as const;
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
 
+export type MissionPriority = "P0" | "P1" | "P2";
+export type MissionType = "revenue" | "delivery" | "voice" | "biz_admin" | "mixed";
+export type MissionStatus = TaskPhase;
+export type ApprovalClass = "low" | "medium" | "high";
+
 export type LaneId =
+  | "command_center"
+  | "sales_outreach"
+  | "client_delivery"
+  | "ai_recepcia"
+  | "content_media"
+  | "system_devops"
+  | "finance_ops"
+  | "research_intel"
+  | "voice_builder"
+  | "voice_ops"
+  | "biz_admin"
   | "sales"
   | "delivery"
   | "runtime"
@@ -22,6 +38,71 @@ export interface LaneDefinition {
   name: string;
   purpose: string;
   ownerHint: string;
+}
+
+export interface Mission {
+  id: string;
+  issueId?: string;
+  identifier?: string;
+  objective: string;
+  context: string;
+  deadline: string;
+  priority: MissionPriority;
+  approvalClass: ApprovalClass;
+  successCriteria: string[];
+  constraints: string[];
+  outputRequired: string;
+  status: MissionStatus;
+  missionType: MissionType;
+  createdAt: string;
+}
+
+export interface Packet {
+  id: string;
+  missionId: string;
+  issueId: string;
+  identifier?: string;
+  laneId: LaneId;
+  title: string;
+  phase: TaskPhase;
+  blockedReason?: BlockedReason;
+  approvalRequired: boolean;
+  approvalStatus: ApprovalStatus;
+  dependencies: string[];
+  evidenceCount: number;
+  deadline?: string;
+}
+
+export interface MissionSummary {
+  missionId?: string;
+  objective?: string;
+  status?: MissionStatus;
+  totalPackets: number;
+  donePackets: number;
+  blockedPackets: number;
+  inProgressPackets: number;
+  queuedPackets: number;
+  approvalPending: number;
+}
+
+export interface ThroughputSummary {
+  packetsPerDay: number;
+  doneRatePct: number;
+  meanCycleTimeMinutes: number;
+}
+
+export interface SlaSnapshot {
+  taskId: string;
+  breached: boolean;
+  ageMinutes: number;
+  thresholdMinutes: number;
+  alertedAt?: string;
+}
+
+export interface LaneLoad {
+  laneId: LaneId;
+  p0Active: number;
+  p1p2Active: number;
 }
 
 export interface CaptureEntry {
@@ -98,6 +179,13 @@ export interface AgentTask {
   url?: string;
   description: string;
   laneId: LaneId;
+  missionId?: string;
+  packetId?: string;
+  priority?: MissionPriority;
+  deadline?: string;
+  dependencies?: string[];
+  approvalClass?: ApprovalClass;
+  isMissionRoot?: boolean;
   owner?: string;
   phase: TaskPhase;
   phaseUpdatedAt: string;
@@ -128,10 +216,15 @@ export interface TaskSummary {
 export interface LinearTasksResponse {
   tasks: AgentTask[];
   summary: TaskSummary;
+  missionSummary?: MissionSummary;
+  throughput?: ThroughputSummary;
+  slaBreaches?: SlaSnapshot[];
+  approvalQueue?: AgentTask[];
 }
 
 export interface AgentsResponse extends LinearTasksResponse {
   lanes: LaneStatus[];
+  laneLoad?: LaneLoad[];
 }
 
 export interface CreateTaskInput {
@@ -141,6 +234,14 @@ export interface CreateTaskInput {
   payload?: string;
   approvalRequired?: boolean;
   dodChecklist?: string[];
+  missionId?: string;
+  packetId?: string;
+  priority?: MissionPriority;
+  deadline?: string;
+  dependencies?: string[];
+  approvalClass?: ApprovalClass;
+  parentId?: string;
+  isMissionRoot?: boolean;
 }
 
 export interface UpdateTaskInput {
@@ -155,4 +256,25 @@ export interface UpdateTaskInput {
   evidence?: string[];
   approvalLog?: string[];
   payloadAppend?: string;
+}
+
+export interface MissionIntakeInput {
+  missionId: string;
+  objective: string;
+  context: string;
+  deadline: string;
+  priority: MissionPriority;
+  successCriteria: string[];
+  constraints: string[];
+  approvalClass: ApprovalClass;
+  outputRequired: string;
+}
+
+export interface MissionDispatchResponse {
+  mission: Mission;
+  packets: Packet[];
+  dependencyGraph: {
+    parallelReady: string[];
+    gated: string[];
+  };
 }

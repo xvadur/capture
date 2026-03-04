@@ -1,23 +1,22 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useMemo, useState } from "react";
 import { useAppState } from "@/components/app-state-provider";
 import { Card } from "@/components/ui/card";
 import { countWords } from "@/lib/utils";
 
 export function CaptureEditor({ onCaptured }: { onCaptured: () => void }) {
-  const { draft, updateDraft, resetDraft, draftWords, draftCharsNoSpaces, liveWordsPerMinute } = useAppState();
+  const { draft, updateDraft, resetDraft, draftWords, draftCharsNoSpaces, liveWordsPerMinute, liveCharsPerMinute } =
+    useAppState();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<string>("");
-  const formRef = useRef<HTMLFormElement | null>(null);
 
   const quickReadMinutes = useMemo(() => {
     if (!draftWords) return 0;
     return Number((draftWords / 200).toFixed(1));
   }, [draftWords]);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitCapture() {
     if (!draft.trim() || isSubmitting) {
       return;
     }
@@ -47,6 +46,11 @@ export function CaptureEditor({ onCaptured }: { onCaptured: () => void }) {
     }
   }
 
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void submitCapture();
+  }
+
   function handleDraftKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     const wantsShortcutSubmit =
       (event.key === "Enter" || event.code === "Enter" || event.code === "NumpadEnter") &&
@@ -60,7 +64,7 @@ export function CaptureEditor({ onCaptured }: { onCaptured: () => void }) {
       return;
     }
 
-    formRef.current?.requestSubmit();
+    void submitCapture();
   }
 
   return (
@@ -75,7 +79,7 @@ export function CaptureEditor({ onCaptured }: { onCaptured: () => void }) {
         </div>
       </div>
 
-      <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <textarea
           value={draft}
           onChange={(event) => updateDraft(event.target.value)}
@@ -84,10 +88,14 @@ export function CaptureEditor({ onCaptured }: { onCaptured: () => void }) {
           className="h-44 w-full resize-y rounded-xl border border-[var(--line)] bg-white px-4 py-3 text-base text-slate-900 outline-none transition focus:border-slate-400"
         />
 
-        <div className="grid gap-2 text-sm text-slate-600 md:grid-cols-4">
+        <div className="grid gap-2 text-sm text-slate-600 md:grid-cols-5">
           <div className="rounded-lg border border-[var(--line)] bg-white px-3 py-2">
             <div className="text-xs uppercase tracking-wide text-slate-400">Live WPM</div>
             <div className="text-lg font-semibold text-slate-900">{liveWordsPerMinute}</div>
+          </div>
+          <div className="rounded-lg border border-[var(--line)] bg-white px-3 py-2">
+            <div className="text-xs uppercase tracking-wide text-slate-400">Live CPM</div>
+            <div className="text-lg font-semibold text-slate-900">{liveCharsPerMinute}</div>
           </div>
           <div className="rounded-lg border border-[var(--line)] bg-white px-3 py-2">
             <div className="text-xs uppercase tracking-wide text-slate-400">Draft Words</div>

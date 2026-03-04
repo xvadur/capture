@@ -18,7 +18,7 @@ function chipToneClasses(tone: MetricChip["tone"]): string {
 }
 
 export function StickyMetricsBar() {
-  const { liveWordsPerMinute, draftWords } = useAppState();
+  const { liveWordsPerMinute, liveCharsPerMinute, draftWords } = useAppState();
   const [captureMetrics, setCaptureMetrics] = useState<CaptureMetrics | null>(null);
 
   useEffect(() => {
@@ -55,6 +55,7 @@ export function StickyMetricsBar() {
 
     return [
       { label: "LIVE WPM", value: String(liveWordsPerMinute) },
+      { label: "LIVE CPM", value: String(liveCharsPerMinute) },
       { label: "DRAFT WORDS", value: String(draftWords) },
       { label: "24H WORDS", value: String(snapshot?.words24h ?? captureMetrics?.words24h ?? 0), tone: "positive" },
       { label: "24H PROMPTS", value: String(snapshot?.entries24h ?? captureMetrics?.entries24h ?? 0), tone: "positive" },
@@ -68,7 +69,7 @@ export function StickyMetricsBar() {
       { label: "SENTENCES", value: String(snapshot?.sentences ?? linguistic?.sentences ?? 0) },
       { label: "PARAGRAPHS", value: String(snapshot?.paragraphs ?? linguistic?.paragraphs ?? 0) },
     ];
-  }, [captureMetrics, draftWords, liveWordsPerMinute]);
+  }, [captureMetrics, draftWords, liveCharsPerMinute, liveWordsPerMinute]);
 
   return (
     <div className="sticky top-0 z-30 border-y border-[var(--line)] bg-[var(--panel)]/95 backdrop-blur">

@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 
 export function TaskPayloadForm({ onCreated }: { onCreated: () => void }) {
   const [title, setTitle] = useState("");
-  const [laneId, setLaneId] = useState<LaneId>("sales");
+  const [laneId, setLaneId] = useState<LaneId>("command_center");
   const [payload, setPayload] = useState("");
   const [owner, setOwner] = useState("");
   const [approvalRequired, setApprovalRequired] = useState(false);

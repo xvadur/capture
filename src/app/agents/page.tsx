@@ -70,6 +70,20 @@ export default function AgentsPage() {
           <div className="rounded-lg border border-[var(--line)] bg-white p-3 text-sm">Blocked: {data.summary.byPhase.blocked}</div>
           <div className="rounded-lg border border-[var(--line)] bg-white p-3 text-sm">Done: {data.summary.byPhase.done}</div>
         </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-4">
+          <div className="rounded-lg border border-[var(--line)] bg-white p-3 text-sm">
+            Mission Packets: {data.missionSummary?.totalPackets ?? 0}
+          </div>
+          <div className="rounded-lg border border-[var(--line)] bg-white p-3 text-sm">
+            Approval Queue: {data.approvalQueue?.length ?? 0}
+          </div>
+          <div className="rounded-lg border border-[var(--line)] bg-white p-3 text-sm">
+            SLA Breaches: {data.slaBreaches?.length ?? 0}
+          </div>
+          <div className="rounded-lg border border-[var(--line)] bg-white p-3 text-sm">
+            Packets / Day: {data.throughput?.packetsPerDay ?? 0}
+          </div>
+        </div>
       </Card>
     </div>
   );

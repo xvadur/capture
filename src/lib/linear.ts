@@ -1,20 +1,58 @@
-import { DONE_REQUIREMENTS, LANE_MAP, LINEAR_ENV } from "@/lib/config";
+import { DONE_REQUIREMENTS, LANE_MAP, LEGACY_LANE_ALIASES, LINEAR_ENV } from "@/lib/config";
 import { buildTaskSummary, getLocalTasks, upsertLocalTask } from "@/lib/local-store";
 import {
   AgentTask,
+  ApprovalClass,
   ApprovalStatus,
   BLOCKED_REASONS,
   BlockedReason,
   CreateTaskInput,
+  LaneLoad,
   LaneId,
   LinearTasksResponse,
+  Mission,
+  MissionDispatchResponse,
+  MissionIntakeInput,
+  MissionPriority,
+  MissionType,
+  Packet,
+  SlaSnapshot,
   TaskControlMeta,
   TaskPhase,
   UpdateTaskInput,
 } from "@/lib/types";
-import { isBlockedReason, isTaskPhase, safeJsonParse, toIsoNow } from "@/lib/utils";
+import { isBlockedReason, isTaskPhase, minutesSince, safeJsonParse, toIsoNow } from "@/lib/utils";
 
 const CAPTURE_META_PREFIX = "<!-- CAPTURE_META ";
+const PHASE_TRANSITIONS: Record<TaskPhase, TaskPhase[]> = {
+  queued: ["in_progress", "blocked"],
+  in_progress: ["blocked", "done"],
+  blocked: ["in_progress"],
+  done: [],
+};
+const P0_LIMIT_PER_LANE = 1;
+const P1_P2_LIMIT_PER_LANE = 2;
+
+const MISSION_LANE_MAP: Record<MissionType, LaneId[]> = {
+  revenue: ["command_center", "sales_outreach", "content_media", "research_intel", "client_delivery"],
+  delivery: ["command_center", "client_delivery", "system_devops", "ai_recepcia"],
+  voice: ["command_center", "voice_builder", "voice_ops", "system_devops", "client_delivery"],
+  biz_admin: ["command_center", "biz_admin", "finance_ops", "research_intel"],
+  mixed: ["command_center", "sales_outreach", "client_delivery", "system_devops", "research_intel"],
+};
+
+function normalizeLaneId(raw: LaneId | string | undefined): LaneId {
+  if (!raw) return "command_center";
+  const lane = String(raw) as LaneId;
+  if (LANE_MAP[lane]) {
+    return lane;
+  }
+  const aliased = LEGACY_LANE_ALIASES[lane];
+  if (aliased && LANE_MAP[aliased]) {
+    return aliased;
+  }
+  return "command_center";
+}
 
 type LinearIssue = {
   id: string;
@@ -25,6 +63,16 @@ type LinearIssue = {
   updatedAt?: string;
   assignee?: { name?: string | null } | null;
   team?: { id?: string | null; key?: string | null; name?: string | null } | null;
+};
+
+type ComposeDescriptionOptions = {
+  missionId?: string;
+  packetId?: string;
+  priority?: MissionPriority;
+  deadline?: string;
+  dependencies?: string[];
+  approvalClass?: ApprovalClass;
+  isMissionRoot?: boolean;
 };
 
 function hasLinearConfig(): boolean {
@@ -135,12 +183,18 @@ function parseControl(description: string): Record<string, string> {
     }, {});
 }
 
-function parseMeta(description: string): TaskControlMeta {
+function parseMetaBlob(description: string): Record<string, unknown> {
   const metaMatch = description.match(/<!-- CAPTURE_META\s+([\s\S]*?)\s*-->/);
+  if (!metaMatch?.[1]) {
+    return {};
+  }
+  return safeJsonParse<Record<string, unknown>>(metaMatch[1], {});
+}
 
-  if (metaMatch?.[1]) {
-    const parsed = safeJsonParse<Partial<TaskControlMeta>>(metaMatch[1], {});
-    const laneId = parsed.laneId && parsed.laneId in LANE_MAP ? parsed.laneId : "ops";
+function parseMeta(description: string): TaskControlMeta {
+  const parsed = parseMetaBlob(description);
+  if (Object.keys(parsed).length > 0) {
+    const laneId = normalizeLaneId(typeof parsed.laneId === "string" ? parsed.laneId : undefined);
     const phase: TaskPhase = isTaskPhase(parsed.phase) ? parsed.phase : "queued";
     const blockedReason = isBlockedReason(parsed.blockedReason) ? parsed.blockedReason : undefined;
     const approvalStatus: ApprovalStatus = ["pending", "approved", "rejected"].includes(
@@ -150,17 +204,17 @@ function parseMeta(description: string): TaskControlMeta {
       : "pending";
 
     return {
-      laneId: laneId as LaneId,
+      laneId,
       phase,
       blockedReason,
-      phaseUpdatedAt: parsed.phaseUpdatedAt ?? toIsoNow(),
+      phaseUpdatedAt: typeof parsed.phaseUpdatedAt === "string" ? parsed.phaseUpdatedAt : toIsoNow(),
       approvalRequired: Boolean(parsed.approvalRequired),
       approvalStatus,
     };
   }
 
   const control = parseControl(description);
-  const laneId = control.lane_id && control.lane_id in LANE_MAP ? (control.lane_id as LaneId) : "ops";
+  const laneId = normalizeLaneId(control.lane_id);
   const phase = isTaskPhase(control.phase) ? control.phase : "queued";
   const blockedReason = isBlockedReason(control.blocked_reason) ? (control.blocked_reason as BlockedReason) : undefined;
 
@@ -188,6 +242,7 @@ function composeDescription(
   dodChecklist: string[],
   evidence: string[],
   approvalLog: string[],
+  options?: ComposeDescriptionOptions,
 ): string {
   const checklist = dodChecklist.length
     ? dodChecklist.map((item) => toChecklistLine(item)).join("\n")
@@ -196,7 +251,16 @@ function composeDescription(
   const evidenceBlock = evidence.length ? evidence.map((item) => `- ${item}`).join("\n") : "- Pending";
   const approvalLogBlock = approvalLog.length ? approvalLog.map((item) => `- ${item}`).join("\n") : "- None";
 
-  const metaLine = `${CAPTURE_META_PREFIX}${JSON.stringify(meta)} -->`;
+  const metaLine = `${CAPTURE_META_PREFIX}${JSON.stringify({
+    ...meta,
+    missionId: options?.missionId,
+    packetId: options?.packetId,
+    priority: options?.priority,
+    deadline: options?.deadline,
+    dependencies: options?.dependencies ?? [],
+    approvalClass: options?.approvalClass,
+    isMissionRoot: Boolean(options?.isMissionRoot),
+  })} -->`;
 
   return [
     baseBody.trim(),
@@ -208,6 +272,12 @@ function composeDescription(
     `- blocked_reason: ${meta.blockedReason ?? "n/a"}`,
     `- approval_required: ${toYesNo(meta.approvalRequired)}`,
     `- approval_status: ${meta.approvalStatus}`,
+    `- mission_id: ${options?.missionId ?? "n/a"}`,
+    `- packet_id: ${options?.packetId ?? "n/a"}`,
+    `- priority: ${options?.priority ?? "P2"}`,
+    `- deadline: ${options?.deadline ?? "n/a"}`,
+    `- dependencies: ${options?.dependencies?.join(", ") ?? "none"}`,
+    `- approval_class: ${options?.approvalClass ?? "medium"}`,
     "",
     "## Definition of Done",
     checklist,
@@ -227,9 +297,19 @@ function composeDescription(
 function fromLinearIssue(issue: LinearIssue): AgentTask {
   const description = issue.description ?? "";
   const meta = parseMeta(description);
+  const rawMeta = parseMetaBlob(description);
   const checklistItems = parseChecklist(sectionContent(description, "Definition of Done"));
   const evidence = parseBullets(sectionContent(description, "Evidence")).filter((item) => item.toLowerCase() !== "pending");
   const approvalLog = parseBullets(sectionContent(description, "Approval Log")).filter((item) => item.toLowerCase() !== "none");
+  const missionId = typeof rawMeta.missionId === "string" ? rawMeta.missionId : undefined;
+  const packetId = typeof rawMeta.packetId === "string" ? rawMeta.packetId : undefined;
+  const priority = typeof rawMeta.priority === "string" ? (rawMeta.priority as MissionPriority) : undefined;
+  const deadline = typeof rawMeta.deadline === "string" ? rawMeta.deadline : undefined;
+  const dependencies = Array.isArray(rawMeta.dependencies)
+    ? rawMeta.dependencies.map((item) => String(item)).filter(Boolean)
+    : [];
+  const approvalClass = typeof rawMeta.approvalClass === "string" ? (rawMeta.approvalClass as ApprovalClass) : undefined;
+  const isMissionRoot = Boolean(rawMeta.isMissionRoot);
 
   return {
     id: issue.id,
@@ -238,6 +318,13 @@ function fromLinearIssue(issue: LinearIssue): AgentTask {
     url: issue.url,
     description,
     laneId: meta.laneId,
+    missionId,
+    packetId,
+    priority,
+    deadline,
+    dependencies,
+    approvalClass,
+    isMissionRoot,
     owner: issue.assignee?.name ?? undefined,
     phase: meta.phase,
     phaseUpdatedAt: meta.phaseUpdatedAt,
@@ -396,10 +483,129 @@ async function getLinearIssueById(id: string): Promise<LinearIssue> {
   return detail.issue;
 }
 
-export async function listTasks(): Promise<LinearTasksResponse> {
+type ListTaskOptions = {
+  missionId?: string;
+  includeSla?: boolean;
+  laneId?: LaneId;
+};
+
+function buildThroughput(tasks: AgentTask[]) {
+  const now = Date.now();
+  const oneDayMs = 24 * 60 * 60 * 1000;
+  const last24h = tasks.filter((task) => {
+    const updated = Date.parse(task.phaseUpdatedAt);
+    return !Number.isNaN(updated) && updated >= now - oneDayMs;
+  });
+  const done = tasks.filter((task) => task.phase === "done").length;
+  const doneRatePct = tasks.length > 0 ? Number(((done / tasks.length) * 100).toFixed(1)) : 0;
+
+  const cycleTimes: number[] = [];
+  for (const task of tasks) {
+    if (task.phase !== "done") continue;
+    const updatedAt = Date.parse(task.updatedAt ?? task.phaseUpdatedAt);
+    const phaseAt = Date.parse(task.phaseUpdatedAt);
+    if (!Number.isNaN(updatedAt) && !Number.isNaN(phaseAt) && updatedAt >= phaseAt) {
+      cycleTimes.push((updatedAt - phaseAt) / 60_000);
+    }
+  }
+
+  return {
+    packetsPerDay: last24h.length,
+    doneRatePct,
+    meanCycleTimeMinutes: cycleTimes.length
+      ? Number((cycleTimes.reduce((sum, value) => sum + value, 0) / cycleTimes.length).toFixed(1))
+      : 0,
+  };
+}
+
+function buildMissionSummary(tasks: AgentTask[], missionId?: string) {
+  const packets = tasks.filter((task) => !task.isMissionRoot);
+  const missionPackets = missionId ? packets.filter((task) => task.missionId === missionId) : packets;
+  if (!missionPackets.length) {
+    return {
+      missionId,
+      totalPackets: 0,
+      donePackets: 0,
+      blockedPackets: 0,
+      inProgressPackets: 0,
+      queuedPackets: 0,
+      approvalPending: 0,
+    };
+  }
+
+  const rootMission = tasks.find((task) => task.isMissionRoot && (missionId ? task.missionId === missionId : true));
+  const byPhase = missionPackets.reduce(
+    (acc, task) => {
+      acc[task.phase] += 1;
+      return acc;
+    },
+    { queued: 0, in_progress: 0, blocked: 0, done: 0 },
+  );
+
+  return {
+    missionId: rootMission?.missionId ?? missionId,
+    objective: rootMission?.title,
+    status: rootMission?.phase,
+    totalPackets: missionPackets.length,
+    donePackets: byPhase.done,
+    blockedPackets: byPhase.blocked,
+    inProgressPackets: byPhase.in_progress,
+    queuedPackets: byPhase.queued,
+    approvalPending: missionPackets.filter((task) => task.approvalRequired && task.approvalStatus !== "approved").length,
+  };
+}
+
+function buildSlaBreaches(tasks: AgentTask[]): SlaSnapshot[] {
+  return tasks
+    .filter((task) => task.phase === "blocked")
+    .map((task) => ({
+      taskId: task.id,
+      breached: minutesSince(task.phaseUpdatedAt) > DONE_REQUIREMENTS.blockedEscalationMinutes,
+      ageMinutes: Number(minutesSince(task.phaseUpdatedAt).toFixed(1)),
+      thresholdMinutes: DONE_REQUIREMENTS.blockedEscalationMinutes,
+      alertedAt: task.updatedAt,
+    }))
+    .filter((item) => item.breached);
+}
+
+export function buildLaneLoad(tasks: AgentTask[]): LaneLoad[] {
+  const load = new Map<LaneId, LaneLoad>();
+  for (const task of tasks) {
+    if (task.phase !== "in_progress") continue;
+    const laneId = normalizeLaneId(task.laneId);
+    const current = load.get(laneId) ?? { laneId, p0Active: 0, p1p2Active: 0 };
+    if (task.priority === "P0") {
+      current.p0Active += 1;
+    } else {
+      current.p1p2Active += 1;
+    }
+    load.set(laneId, current);
+  }
+  return [...load.values()];
+}
+
+export async function listTasks(options?: ListTaskOptions): Promise<LinearTasksResponse> {
+  const missionFilter = options?.missionId;
+  const laneFilter = options?.laneId ? normalizeLaneId(options.laneId) : undefined;
+
+  const finalize = (inputTasks: AgentTask[]): LinearTasksResponse => {
+    const normalized = inputTasks.map((task) => ({ ...task, laneId: normalizeLaneId(task.laneId) }));
+    const missionScoped = missionFilter ? normalized.filter((task) => task.missionId === missionFilter) : normalized;
+    const tasks = laneFilter ? missionScoped.filter((task) => task.laneId === laneFilter) : missionScoped;
+    return {
+      tasks,
+      summary: buildTaskSummary(tasks),
+      missionSummary: buildMissionSummary(normalized, missionFilter),
+      throughput: buildThroughput(tasks),
+      slaBreaches: options?.includeSla ? buildSlaBreaches(tasks) : [],
+      approvalQueue: tasks.filter(
+        (task) => task.approvalRequired && task.approvalStatus !== "approved" && task.phase !== "done",
+      ),
+    };
+  };
+
   if (!hasLinearConfig()) {
-    const localTasks = getLocalTasks();
-    return { tasks: localTasks, summary: buildTaskSummary(localTasks) };
+    return finalize(getLocalTasks());
   }
 
   try {
@@ -408,18 +614,14 @@ export async function listTasks(): Promise<LinearTasksResponse> {
       .map(fromLinearIssue)
       .sort((a, b) => Date.parse(b.phaseUpdatedAt) - Date.parse(a.phaseUpdatedAt));
 
-    return {
-      tasks,
-      summary: buildTaskSummary(tasks),
-    };
+    return finalize(tasks);
   } catch {
-    const localTasks = getLocalTasks();
-    return { tasks: localTasks, summary: buildTaskSummary(localTasks) };
+    return finalize(getLocalTasks());
   }
 }
 
 export async function createTask(input: CreateTaskInput): Promise<AgentTask> {
-  const lane = input.laneId in LANE_MAP ? input.laneId : "ops";
+  const lane = normalizeLaneId(input.laneId);
   const now = toIsoNow();
   const meta: TaskControlMeta = {
     laneId: lane,
@@ -436,6 +638,15 @@ export async function createTask(input: CreateTaskInput): Promise<AgentTask> {
     normalizeChecklist(input.dodChecklist),
     [],
     [],
+    {
+      missionId: input.missionId,
+      packetId: input.packetId,
+      priority: input.priority,
+      deadline: input.deadline,
+      dependencies: input.dependencies,
+      approvalClass: input.approvalClass,
+      isMissionRoot: input.isMissionRoot,
+    },
   );
 
   if (!hasLinearConfig()) {
@@ -445,6 +656,13 @@ export async function createTask(input: CreateTaskInput): Promise<AgentTask> {
       title: input.title,
       description: body,
       laneId: lane,
+      missionId: input.missionId,
+      packetId: input.packetId,
+      priority: input.priority,
+      deadline: input.deadline,
+      dependencies: input.dependencies ?? [],
+      approvalClass: input.approvalClass,
+      isMissionRoot: Boolean(input.isMissionRoot),
       owner: input.owner,
       phase: meta.phase,
       phaseUpdatedAt: meta.phaseUpdatedAt,
@@ -487,6 +705,7 @@ export async function createTask(input: CreateTaskInput): Promise<AgentTask> {
       teamId,
       title: input.title,
       description: body,
+      parentId: input.parentId,
     },
   });
 
@@ -506,6 +725,10 @@ export async function updateTask(issueId: string, input: UpdateTaskInput): Promi
 
   const requestedPhase = input.phase ?? existing.phase;
   const blockedReason = input.blockedReason ?? existing.blockedReason;
+
+  if (requestedPhase !== existing.phase && !PHASE_TRANSITIONS[existing.phase].includes(requestedPhase)) {
+    throw new Error(`Invalid phase transition: ${existing.phase} -> ${requestedPhase}`);
+  }
 
   if (requestedPhase === "blocked" && !blockedReason) {
     throw new Error(`Blocked transition requires blocked_reason: ${BLOCKED_REASONS.join("|")}`);
@@ -530,6 +753,15 @@ export async function updateTask(issueId: string, input: UpdateTaskInput): Promi
     nextChecklist,
     nextEvidence,
     nextApprovalLog,
+    {
+      missionId: existing.missionId,
+      packetId: existing.packetId,
+      priority: existing.priority,
+      deadline: existing.deadline,
+      dependencies: existing.dependencies ?? [],
+      approvalClass: existing.approvalClass,
+      isMissionRoot: existing.isMissionRoot,
+    },
   );
 
   if (requestedPhase === "done") {
@@ -597,4 +829,206 @@ export async function updateTask(issueId: string, input: UpdateTaskInput): Promi
   }
 
   return fromLinearIssue(data.issueUpdate.issue);
+}
+
+function classifyMissionType(input: MissionIntakeInput): MissionType {
+  const haystack = `${input.objective} ${input.context}`.toLowerCase();
+  if (haystack.includes("voice")) return "voice";
+  if (haystack.includes("biz") || haystack.includes("legal") || haystack.includes("zivnost")) return "biz_admin";
+  if (haystack.includes("delivery") || haystack.includes("onboard")) return "delivery";
+  if (haystack.includes("sales") || haystack.includes("revenue") || haystack.includes("lead")) return "revenue";
+  return "mixed";
+}
+
+function dependencyForLane(laneId: LaneId, missionType: MissionType): string[] {
+  if (missionType === "voice" && laneId === "voice_ops") {
+    return ["voice_builder"];
+  }
+  if (missionType === "revenue" && laneId === "client_delivery") {
+    return ["sales_outreach"];
+  }
+  if (missionType === "biz_admin" && laneId === "finance_ops") {
+    return ["biz_admin"];
+  }
+  return [];
+}
+
+function laneDefaultChecklist(laneId: LaneId): string[] {
+  if (laneId === "command_center") {
+    return ["Mission packet routing posted", "Owners assigned", "Checkpoint cadence active"];
+  }
+  return ["Objective delivered", "Evidence attached", "Handoff notes posted"];
+}
+
+function approvalRequiredForLane(laneId: LaneId, approvalClass: ApprovalClass): boolean {
+  if (approvalClass === "high") return true;
+  if (laneId === "sales_outreach" || laneId === "system_devops" || laneId === "finance_ops") return true;
+  return false;
+}
+
+export async function createMission(input: MissionIntakeInput): Promise<MissionDispatchResponse> {
+  const missionType = classifyMissionType(input);
+  const now = toIsoNow();
+
+  const missionRoot = await createTask({
+    title: `MISSION: ${input.objective.slice(0, 160)}`,
+    laneId: "command_center",
+    payload: [
+      "EXECUTE MISSION",
+      `Mission ID: ${input.missionId}`,
+      `Objective: ${input.objective}`,
+      `Context: ${input.context}`,
+      `Deadline: ${input.deadline}`,
+      `Priority: ${input.priority}`,
+      `Success Criteria: ${input.successCriteria.join(" | ")}`,
+      `Constraints: ${input.constraints.join(" | ")}`,
+      `Approval Class: ${input.approvalClass}`,
+      `Output Required: ${input.outputRequired}`,
+    ].join("\n"),
+    approvalRequired: input.approvalClass === "high",
+    dodChecklist: [
+      "Mission intake validated",
+      "Packet graph published",
+      "Final summary posted with evidence ledger",
+    ],
+    missionId: input.missionId,
+    packetId: "mission-root",
+    priority: input.priority,
+    deadline: input.deadline,
+    approvalClass: input.approvalClass,
+    isMissionRoot: true,
+  });
+
+  const targetLanes = MISSION_LANE_MAP[missionType];
+  const packets: Packet[] = [];
+  const parallelReady: string[] = [];
+  const gated: string[] = [];
+
+  for (let index = 0; index < targetLanes.length; index += 1) {
+    const laneId = targetLanes[index];
+    const packetId = `${input.missionId}-P${index + 1}`;
+    const dependencies = dependencyForLane(laneId, missionType);
+    const approvalRequired = approvalRequiredForLane(laneId, input.approvalClass);
+
+    const task = await createTask({
+      title: `PACKET: ${laneId} :: ${input.objective.slice(0, 90)}`,
+      laneId,
+      payload: `Mission packet for ${laneId}.\nObjective: ${input.objective}`,
+      approvalRequired,
+      dodChecklist: laneDefaultChecklist(laneId),
+      missionId: input.missionId,
+      packetId,
+      priority: input.priority,
+      deadline: input.deadline,
+      dependencies,
+      approvalClass: input.approvalClass,
+      parentId: missionRoot.id,
+    });
+
+    packets.push({
+      id: packetId,
+      missionId: input.missionId,
+      issueId: task.id,
+      identifier: task.identifier,
+      laneId,
+      title: task.title,
+      phase: task.phase,
+      blockedReason: task.blockedReason,
+      approvalRequired: task.approvalRequired,
+      approvalStatus: task.approvalStatus,
+      dependencies,
+      evidenceCount: task.evidence.length,
+      deadline: task.deadline,
+    });
+
+    if (dependencies.length > 0) {
+      gated.push(packetId);
+    } else {
+      parallelReady.push(packetId);
+    }
+  }
+
+  const mission: Mission = {
+    id: input.missionId,
+    issueId: missionRoot.id,
+    identifier: missionRoot.identifier,
+    objective: input.objective,
+    context: input.context,
+    deadline: input.deadline,
+    priority: input.priority,
+    approvalClass: input.approvalClass,
+    successCriteria: input.successCriteria,
+    constraints: input.constraints,
+    outputRequired: input.outputRequired,
+    status: "queued",
+    missionType,
+    createdAt: now,
+  };
+
+  return {
+    mission,
+    packets,
+    dependencyGraph: {
+      parallelReady,
+      gated,
+    },
+  };
+}
+
+async function getTaskById(taskId: string): Promise<AgentTask> {
+  const { tasks } = await listTasks();
+  const task = tasks.find((item) => item.id === taskId);
+  if (!task) {
+    throw new Error("Packet not found.");
+  }
+  return task;
+}
+
+function enforceLaneConcurrency(tasks: AgentTask[], candidate: AgentTask): void {
+  if (candidate.phase === "in_progress") return;
+
+  const inProgress = tasks.filter((task) => task.id !== candidate.id && task.laneId === candidate.laneId && task.phase === "in_progress");
+  const p0Active = inProgress.filter((task) => task.priority === "P0").length;
+  const p1p2Active = inProgress.filter((task) => task.priority !== "P0").length;
+
+  if (candidate.priority === "P0" && p0Active >= P0_LIMIT_PER_LANE) {
+    throw new Error("Lane concurrency guard: max 1 active P0 packet per lane.");
+  }
+  if (candidate.priority !== "P0" && p1p2Active >= P1_P2_LIMIT_PER_LANE) {
+    throw new Error("Lane concurrency guard: max 2 active P1/P2 packets per lane.");
+  }
+}
+
+export async function setPacketPhase(
+  taskId: string,
+  input: { phase: TaskPhase; blockedReason?: BlockedReason; commandCenterClose?: boolean },
+): Promise<AgentTask> {
+  const current = await getTaskById(taskId);
+  if (input.phase === "in_progress") {
+    const { tasks } = await listTasks({ missionId: current.missionId });
+    enforceLaneConcurrency(tasks, current);
+  }
+
+  return updateTask(taskId, {
+    phase: input.phase,
+    blockedReason: input.blockedReason,
+    commandCenterClose: input.commandCenterClose ?? input.phase === "done",
+  });
+}
+
+export async function approvePacket(taskId: string, decision: ApprovalStatus): Promise<AgentTask> {
+  const current = await getTaskById(taskId);
+  const logEntry = `${toIsoNow()} approval ${decision}`;
+
+  let updated = await updateTask(taskId, {
+    approvalRequired: true,
+    approvalStatus: decision,
+    approvalLog: [...(current.approvalLog ?? []), logEntry],
+  });
+
+  if (decision === "approved" && updated.phase === "blocked" && updated.blockedReason === "approval") {
+    updated = await updateTask(taskId, { phase: "in_progress", blockedReason: undefined });
+  }
+
+  return updated;
 }

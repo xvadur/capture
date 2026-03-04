@@ -1,20 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createTask, listTasks } from "@/lib/linear";
-import { BLOCKED_REASONS, TASK_PHASES } from "@/lib/types";
+import { BLOCKED_REASONS, LaneId, TASK_PHASES } from "@/lib/types";
 
 const createTaskSchema = z.object({
   title: z.string().trim().min(3).max(200),
-  laneId: z.enum([
-    "sales",
-    "delivery",
-    "runtime",
-    "content",
-    "ops",
-    "automation",
-    "qa",
-    "insights",
-  ]),
+  laneId: z.string().trim().min(2).max(80),
   owner: z.string().trim().max(120).optional(),
   payload: z.string().max(20_000).optional(),
   approvalRequired: z.boolean().optional(),
@@ -26,9 +17,14 @@ const updatePreviewSchema = z.object({
   blockedReason: z.enum(BLOCKED_REASONS).optional(),
 });
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const data = await listTasks();
+    const url = new URL(request.url);
+    const scope = (url.searchParams.get("scope") ?? "mission").toLowerCase();
+    const missionId = url.searchParams.get("missionId") ?? undefined;
+    const laneId = scope === "lane" ? url.searchParams.get("laneId") ?? undefined : undefined;
+    const includeSla = ["1", "true", "yes"].includes((url.searchParams.get("includeSla") ?? "").toLowerCase());
+    const data = await listTasks({ missionId, includeSla, laneId: laneId as LaneId | undefined });
     return NextResponse.json(data);
   } catch (error) {
     return NextResponse.json(
@@ -41,7 +37,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const payload = createTaskSchema.parse(await request.json());
-    const task = await createTask(payload);
+    const task = await createTask({ ...payload, laneId: payload.laneId as LaneId });
 
     return NextResponse.json({ task }, { status: 201 });
   } catch (error) {

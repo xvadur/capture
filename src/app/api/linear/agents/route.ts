@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { LANES } from "@/lib/config";
-import { listTasks } from "@/lib/linear";
+import { buildLaneLoad, listTasks } from "@/lib/linear";
 import { AgentsResponse, LaneStatus } from "@/lib/types";
 
 export async function GET() {
   try {
-    const { tasks, summary } = await listTasks();
+    const { tasks, summary, missionSummary, throughput, slaBreaches, approvalQueue } = await listTasks({ includeSla: true });
 
     const lanes: LaneStatus[] = LANES.map((lane) => {
       const laneTasks = tasks.filter((task) => task.laneId === lane.id);
@@ -22,6 +22,11 @@ export async function GET() {
       lanes,
       tasks,
       summary,
+      missionSummary,
+      throughput,
+      slaBreaches,
+      approvalQueue,
+      laneLoad: buildLaneLoad(tasks),
     };
 
     return NextResponse.json(response);
