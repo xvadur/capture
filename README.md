@@ -55,6 +55,22 @@ npm run lint
 npm run build
 ```
 
+## Cmd/Ctrl+Enter smoke test
+One command (auto bootstraps `next dev` if needed):
+```bash
+npm run smoke:cmd-enter
+```
+
+Optional overrides:
+- `CAPTURE_BASE_URL` (if you already run app elsewhere)
+- `CAPTURE_SMOKE_AUTO_DEV=0` (disable auto dev bootstrap)
+- `CAPTURE_SMOKE_DEV_HOST` (default: `127.0.0.1`)
+- `CAPTURE_SMOKE_DEV_PORT` (default: `4022`)
+- `CAPTURE_SMOKE_MODE=browser|api` (default: `browser`; `api` is fallback for restricted environments)
+- `CAPTURE_SMOKE_TIMEOUT_MS` (default: `20000`)
+- `CAPTURE_SMOKE_NAV_TIMEOUT_MS` (default: `120000`)
+- `CAPTURE_SMOKE_REQUEST_TIMEOUT_MS` (default: `4000`)
+
 ## Cloudflare deployment (Workers via OpenNext)
 1. Add Cloudflare envs in shell:
 - `CLOUDFLARE_API_TOKEN`
