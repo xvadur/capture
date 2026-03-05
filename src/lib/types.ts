@@ -216,6 +216,9 @@ export interface TaskSummary {
 export interface LinearTasksResponse {
   tasks: AgentTask[];
   summary: TaskSummary;
+  source?: "mission-control" | "linear-fallback";
+  degraded?: boolean;
+  fallbackReason?: string;
   missionSummary?: MissionSummary;
   throughput?: ThroughputSummary;
   slaBreaches?: SlaSnapshot[];
@@ -225,6 +228,11 @@ export interface LinearTasksResponse {
 export interface AgentsResponse extends LinearTasksResponse {
   lanes: LaneStatus[];
   laneLoad?: LaneLoad[];
+  currentPacket?: Record<string, string>;
+  sla?: {
+    breached: number;
+    thresholdMinutes: number;
+  };
 }
 
 export interface CreateTaskInput {

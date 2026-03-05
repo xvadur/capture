@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createTask, listTasks } from "@/lib/linear";
+import { listMissionControlTasks, missionControlEnabled } from "@/lib/mission-control/client";
 import { BLOCKED_REASONS, LaneId, TASK_PHASES } from "@/lib/types";
 
 const createTaskSchema = z.object({
@@ -24,8 +25,24 @@ export async function GET(request: Request) {
     const missionId = url.searchParams.get("missionId") ?? undefined;
     const laneId = scope === "lane" ? url.searchParams.get("laneId") ?? undefined : undefined;
     const includeSla = ["1", "true", "yes"].includes((url.searchParams.get("includeSla") ?? "").toLowerCase());
+
+    if (missionControlEnabled()) {
+      try {
+        const mcData = await listMissionControlTasks({ missionId, includeSla, laneId: laneId as LaneId | undefined });
+        return NextResponse.json(mcData);
+      } catch (error) {
+        const fallback = await listTasks({ missionId, includeSla, laneId: laneId as LaneId | undefined });
+        return NextResponse.json({
+          ...fallback,
+          source: "linear-fallback",
+          degraded: true,
+          fallbackReason: error instanceof Error ? error.message : "mission-control-unavailable",
+        });
+      }
+    }
+
     const data = await listTasks({ missionId, includeSla, laneId: laneId as LaneId | undefined });
-    return NextResponse.json(data);
+    return NextResponse.json({ ...data, source: "linear-fallback", degraded: false });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to fetch tasks" },

@@ -18,15 +18,27 @@ const emptySummary: LinearTasksResponse["summary"] = {
 
 export default function DashboardPage() {
   const [data, setData] = useState<LinearTasksResponse>({ tasks: [], summary: emptySummary });
+  const [timedOut, setTimedOut] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const loadTasks = useCallback(async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      setTimedOut(true);
+      controller.abort();
+    }, 9_000);
     try {
-      const response = await fetch("/api/linear/tasks", { cache: "no-store" });
+      setLoading(true);
+      const response = await fetch("/api/linear/tasks", { cache: "no-store", signal: controller.signal });
       if (!response.ok) return;
       const payload = (await response.json()) as LinearTasksResponse;
       setData(payload);
+      setTimedOut(false);
     } catch {
       // keep previous state
+    } finally {
+      clearTimeout(timeout);
+      setLoading(false);
     }
   }, []);
 
@@ -45,12 +57,30 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold text-slate-900">Operations Cockpit</h2>
-        <p className="text-sm text-slate-500">
-          See what moved, what is pending, what got blocked, and who is shipping.
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Operations Cockpit</h2>
+          <p className="text-sm text-slate-500">
+            See what moved, what is pending, what got blocked, and who is shipping.
+          </p>
+        </div>
+        <div className="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-xs font-medium text-slate-600">
+          Data Source: {data.source === "mission-control" ? "mission-control" : "linear-fallback"}
+        </div>
       </div>
+
+      {timedOut ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          Dashboard refresh timed out after 9s. Showing last known snapshot.
+        </div>
+      ) : null}
+
+      {data.degraded ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          Mission-control is degraded, fallback data is active.
+          {data.fallbackReason ? ` (${data.fallbackReason})` : ""}
+        </div>
+      ) : null}
 
       <StatusOverview summary={data.summary} />
 
@@ -80,6 +110,7 @@ export default function DashboardPage() {
 
       <ExecutionBoard tasks={data.tasks} />
       <AgentLeaderboard tasks={data.tasks} />
+      <div className="text-xs text-slate-500">{loading ? "Refreshing..." : "Live sync active"}</div>
     </div>
   );
 }

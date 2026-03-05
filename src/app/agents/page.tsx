@@ -21,15 +21,27 @@ const emptyData: AgentsResponse = {
 
 export default function AgentsPage() {
   const [data, setData] = useState<AgentsResponse>(emptyData);
+  const [timedOut, setTimedOut] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const loadAgents = useCallback(async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      setTimedOut(true);
+      controller.abort();
+    }, 9_000);
     try {
-      const response = await fetch("/api/linear/agents", { cache: "no-store" });
+      setLoading(true);
+      const response = await fetch("/api/linear/agents", { cache: "no-store", signal: controller.signal });
       if (!response.ok) return;
       const payload = (await response.json()) as AgentsResponse;
       setData(payload);
+      setTimedOut(false);
     } catch {
       // ignore transient failures
+    } finally {
+      clearTimeout(timeout);
+      setLoading(false);
     }
   }, []);
 
@@ -48,18 +60,46 @@ export default function AgentsPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold text-slate-900">Agents Command Center</h2>
-        <p className="text-sm text-slate-500">
-          Assign tasks, track each lane&apos;s current mission, and control phase transitions.
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Agents Command Center</h2>
+          <p className="text-sm text-slate-500">
+            Assign tasks, track each lane&apos;s current mission, and control phase transitions.
+          </p>
+        </div>
+        <div className="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-xs font-medium text-slate-600">
+          Data Source: {data.source === "mission-control" ? "mission-control" : "linear-fallback"}
+        </div>
       </div>
 
-      <TaskPayloadForm onCreated={loadAgents} />
+      {timedOut ? (
+        <Card className="border-amber-200 bg-amber-50 text-amber-900">
+          Loading agents timed out after 9s. Keeping last known state.
+        </Card>
+      ) : null}
+
+      {data.degraded ? (
+        <Card className="border-amber-200 bg-amber-50 text-amber-900">
+          Mission-control is degraded, running on fallback source.
+          {data.fallbackReason ? ` (${data.fallbackReason})` : ""}
+        </Card>
+      ) : null}
+
+      {data.source !== "mission-control" ? (
+        <TaskPayloadForm onCreated={loadAgents} />
+      ) : (
+        <Card className="border-sky-200 bg-sky-50 text-sky-900">Read-only mode: updates are managed in Mission Control.</Card>
+      )}
 
       <div className="grid gap-4 xl:grid-cols-[1.1fr_1.2fr]">
         <AgentList lanes={data.lanes} />
-        <TaskControlPanel tasks={data.tasks} onUpdated={loadAgents} />
+        {data.source !== "mission-control" ? (
+          <TaskControlPanel tasks={data.tasks} onUpdated={loadAgents} />
+        ) : (
+          <Card className="border-sky-200 bg-sky-50 text-sky-900">
+            Task control panel is disabled while data source is mission-control (read-only integration).
+          </Card>
+        )}
       </div>
 
       <Card>
@@ -84,6 +124,7 @@ export default function AgentsPage() {
             Packets / Day: {data.throughput?.packetsPerDay ?? 0}
           </div>
         </div>
+        <div className="mt-3 text-xs text-slate-500">{loading ? "Refreshing..." : "Live sync active"}</div>
       </Card>
     </div>
   );

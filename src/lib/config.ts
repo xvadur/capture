@@ -95,10 +95,32 @@ export const LINEAR_ENV = {
   teamKey: process.env.LINEAR_DEFAULT_TEAM,
 };
 
+function envBool(value: string | undefined, fallback = false): boolean {
+  if (!value) {
+    return fallback;
+  }
+  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+}
+
+function envNumber(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export const SUPABASE_ENV = {
   url: process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL,
   anonKey: process.env.SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   serviceKey: process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY,
+};
+
+export const MISSION_CONTROL_ENV = {
+  enabled: envBool(process.env.MISSION_CONTROL_ENABLED, false),
+  baseUrl: process.env.MISSION_CONTROL_BASE_URL,
+  token: process.env.MISSION_CONTROL_TOKEN,
+  timeoutMs: envNumber(process.env.MISSION_CONTROL_TIMEOUT_MS, 8_000),
 };
 
 export const METRICS_POLL_MS = 15_000;
